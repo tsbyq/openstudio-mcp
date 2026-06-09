@@ -4,8 +4,10 @@ from __future__ import annotations
 from mcp_server.skills.model_management.operations import (
     create_baseline_osm,
     create_example_osm,
+    ingest_file_op,
     inspect_osm_summary,
     list_files,
+    list_inputs_op,
     load_osm_model,
     save_osm_model,
 )
@@ -99,6 +101,35 @@ def register(mcp):
         mr = None if max_results == 0 else max_results
         return list_files(directory=directory, pattern=pattern, max_depth=max_depth,
                          max_results=mr)
+
+    @mcp.tool(name="ingest_file", tags={"core"})
+    def ingest_file_tool(filename: str, content: str):
+        """Copy a user-supplied file into the MCP container's /inputs/ directory
+        so simulation tools can access it. Call this when the user provides an
+        OSM model or EPW weather file via chat upload rather than by manually
+        placing it in the mounted inputs folder.
+
+        Accepts .osm (OpenStudio model) and .epw (EnergyPlus weather) only.
+        Both formats are plain text and can be passed as string content.
+
+        Returns the container-internal path (e.g. "/inputs/model.osm") to use
+        in subsequent load_osm_model or simulation calls.
+
+        Args:
+            filename: Basename only, e.g. "SF0021001.osm". No path separators.
+            content: Full file content as a UTF-8 string.
+        """
+        return ingest_file_op(filename=filename, content=content)
+
+    @mcp.tool(name="list_inputs", tags={"core"})
+    def list_inputs_tool():
+        """List files currently in the /inputs/ directory of the MCP container.
+        Call at the start of a calibration run to check what files are already
+        present before asking the user to upload them.
+
+        Returns a sorted list of basenames, e.g. ["SF0021001.osm", "SF.epw"].
+        """
+        return list_inputs_op()
 
     @mcp.tool(name="inspect_osm_summary", tags={"core"})
     def inspect_osm_summary_tool(osm_path: str):
