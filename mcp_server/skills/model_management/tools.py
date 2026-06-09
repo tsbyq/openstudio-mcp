@@ -122,14 +122,19 @@ def register(mcp):
         return ingest_file_op(filename=filename, content=content)
 
     @mcp.tool(name="list_inputs", tags={"core"})
-    def list_inputs_tool():
+    def list_inputs_tool(recursive: bool = False):
         """List files currently in the /inputs/ directory of the MCP container.
         Call at the start of a calibration run to check what files are already
         present before asking the user to upload them.
 
-        Returns a sorted list of basenames, e.g. ["SF0021001.osm", "SF.epw"].
+        recursive=False (default): basenames of files directly in /inputs/.
+        recursive=True: relative paths of all files under /inputs/, including
+        subdirectories, e.g. ["project-a/model.osm", "project-a/weather.epw"].
+
+        Args:
+            recursive: If True, recurse into subdirectories.
         """
-        return list_inputs_op()
+        return list_inputs_op(recursive=recursive)
 
     @mcp.tool(name="inspect_osm_summary", tags={"core"})
     def inspect_osm_summary_tool(osm_path: str):

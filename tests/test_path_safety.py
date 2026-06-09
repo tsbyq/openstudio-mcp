@@ -725,3 +725,26 @@ class TestListInputs:
         result = list_inputs_op()
         assert result["ok"] is True
         assert result["files"] == []
+
+    def test_recursive_lists_subdirectory_files(self, tmp_path, monkeypatch):
+        # Validates: recursive=True returns relative paths for files in subdirectories
+        from mcp_server.skills.model_management.operations import list_inputs_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        (tmp_path / "project-a").mkdir()
+        (tmp_path / "project-a" / "model.osm").write_text("osm")
+        (tmp_path / "project-a" / "weather.epw").write_text("epw")
+        (tmp_path / "root.osm").write_text("osm")
+        result = list_inputs_op(recursive=True)
+        assert result["ok"] is True
+        assert result["files"] == ["project-a/model.osm", "project-a/weather.epw", "root.osm"]
+
+    def test_non_recursive_skips_subdirectories(self, tmp_path, monkeypatch):
+        # Validates: recursive=False (default) ignores files in subdirectories
+        from mcp_server.skills.model_management.operations import list_inputs_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        (tmp_path / "project-a").mkdir()
+        (tmp_path / "project-a" / "model.osm").write_text("osm")
+        (tmp_path / "root.osm").write_text("osm")
+        result = list_inputs_op()
+        assert result["ok"] is True
+        assert result["files"] == ["root.osm"]

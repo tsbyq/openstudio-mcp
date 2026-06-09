@@ -396,12 +396,23 @@ def ingest_file_op(filename: str, content: str) -> dict[str, Any]:
         return {"ok": False, "error": f"Failed to write file: {e}"}
 
 
-def list_inputs_op() -> dict[str, Any]:
-    """Return basenames of all files currently in INPUT_ROOT."""
+def list_inputs_op(recursive: bool = False) -> dict[str, Any]:
+    """Return files currently in INPUT_ROOT.
+
+    recursive=False: basenames of files directly in /inputs/ (default).
+    recursive=True: relative paths of all files under /inputs/, including subdirectories.
+    """
     try:
         if not INPUT_ROOT.exists():
             return {"ok": True, "files": []}
-        files = sorted(f.name for f in INPUT_ROOT.iterdir() if f.is_file())
+        if recursive:
+            files = sorted(
+                str(f.relative_to(INPUT_ROOT))
+                for f in INPUT_ROOT.rglob("*")
+                if f.is_file()
+            )
+        else:
+            files = sorted(f.name for f in INPUT_ROOT.iterdir() if f.is_file())
         return {"ok": True, "files": files}
     except Exception as e:
         return {"ok": False, "error": f"Failed to list inputs: {e}"}
