@@ -11,6 +11,8 @@ from mcp_server import model_manager
 from mcp_server.config import INPUT_ROOT, RUN_ROOT, is_path_allowed, user_run_root
 from mcp_server.skills.model_management.baseline_model import create_baseline_model
 
+_INGEST_ALLOWED_EXTENSIONS = {".osm", ".epw"}
+
 
 def _safe_name(s: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in (s or "")).strip("_") or "example_model"
@@ -361,3 +363,45 @@ def create_baseline_osm(
         }
     except Exception as e:
         return {"ok": False, "error": f"Failed to create baseline model: {e}", "osm_path": str(osm_path)}
+
+
+def ingest_file_op(filename: str, content: str) -> dict[str, Any]:
+    """Write user-supplied file content into INPUT_ROOT.
+
+    Accepts .osm and .epw files only. Both are plain text (XML / ASCII).
+    Overwrites silently if the file already exists.
+    """
+    if not filename:
+        return {"ok": False, "error": "filename must not be empty"}
+    if "/" in filename or "\\" in filename or ".." in filename:
+        return {"ok": False, "error": f"filename must be a plain basename with no path separators: {filename!r}"}
+    ext = Path(filename).suffix.lower()
+    if ext not in _INGEST_ALLOWED_EXTENSIONS:
+        return {
+            "ok": False,
+            "error": f"Extension {ext!r} not allowed. Accepted: {sorted(_INGEST_ALLOWED_EXTENSIONS)}",
+        }
+    if not content:
+        return {"ok": False, "error": "content must not be empty"}
+
+    dest = INPUT_ROOT / filename
+    if not is_path_allowed(dest):
+        return {"ok": False, "error": f"Resolved destination path is not allowed: {dest}"}
+
+    try:
+        INPUT_ROOT.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
+        return {"ok": True, "path": str(dest), "size_bytes": dest.stat().st_size}
+    except Exception as e:
+        return {"ok": False, "error": f"Failed to write file: {e}"}
+
+
+def list_inputs_op() -> dict[str, Any]:
+    """Return basenames of all files currently in INPUT_ROOT."""
+    try:
+        if not INPUT_ROOT.exists():
+            return {"ok": True, "files": []}
+        files = sorted(f.name for f in INPUT_ROOT.iterdir() if f.is_file())
+        return {"ok": True, "files": files}
+    except Exception as e:
+        return {"ok": False, "error": f"Failed to list inputs: {e}"}
