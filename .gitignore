@@ -23,6 +23,10 @@ venv/
 # Test artifacts — generated OSM files from integration test runs
 runs/
 
+# User model files — drop .osm/.epw here before calibration sessions
+inputs/*
+!inputs/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db

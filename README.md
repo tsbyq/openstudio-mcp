@@ -52,7 +52,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
       "command": "docker",
       "args": [
         "run", "--rm", "-i",
-        "-v", "./tests/assets:/inputs:ro",
+        "-v", "./inputs:/inputs",
         "-v", "./runs:/runs",
         "-v", "./.claude/skills:/skills:ro",
         "-e", "OPENSTUDIO_MCP_MODE=prod",
@@ -63,7 +63,7 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-The `-v host:container` mounts expose your folders inside the container: `/inputs` for your models (starts with the bundled test models), `/runs` for simulation outputs, `/skills` for the workflow guides. Use absolute paths if `./` doesn't resolve from where your host launches Docker.
+The `-v host:container` mounts expose your folders inside the container: `/inputs` for your model files, `/runs` for simulation outputs, `/skills` for the workflow guides. Use absolute paths if `./` doesn't resolve from where your host launches Docker.
 
 ### 3. Verify and chat
 
@@ -71,7 +71,16 @@ Look for the **hammer icon** in Claude Desktop's input — click it to see the o
 
 > "Create an example model and tell me about it" → "Create a baseline office with ASHRAE System 3 and show me the HVAC components" → "Load /inputs/MyBuilding.osm, apply the 90.1-2019 typical template, and run a simulation"
 
-**Use the `/inputs` mount for your own files** rather than uploading through chat — Claude Desktop's upload sandbox can't reach MCP tools, so the AI may fall back to writing scripts. Drop a file in the host folder mapped to `/inputs` and reference it by that path. Simulation outputs in `/runs` are already reachable.
+**Providing your own model files:** Copy your `.osm` and `.epw` files into the `inputs/` folder in the repo before starting a session:
+
+```
+openstudio-mcp/
+  inputs/
+    MyBuilding.osm
+    MyCity.epw
+```
+
+The agent will find them automatically via `list_inputs()` and load them by path (`/inputs/MyBuilding.osm`). You can organize by project in subdirectories — e.g. `inputs/project-a/model.osm`. The `inputs/` folder is gitignored so your files stay local.
 
 **Other hosts:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [VS Code Copilot](https://code.visualstudio.com/), [Windsurf](https://windsurf.com/), and [Gemini CLI](https://github.com/google-gemini/gemini-cli) use similar JSON config — see the [MCP docs](https://modelcontextprotocol.io/quickstart/user).
 
