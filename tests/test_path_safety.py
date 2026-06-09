@@ -605,3 +605,123 @@ class TestRunOswAccessControl:
         result = run_osw(str(stage / "workflow.osw"), _internal=True)
         assert "not allowed" not in result.get("error", "").lower(), result
         assert len(list(run_root.iterdir())) == 1, f"internal staging should create a run dir: {result}"
+
+
+# ---------------------------------------------------------------------------
+# IngestFile: filename validation and write behaviour
+# ---------------------------------------------------------------------------
+
+class TestIngestFileValidation:
+    """ingest_file_op rejects bad filenames, extensions, and empty content."""
+
+    def test_empty_filename_rejected(self, tmp_path, monkeypatch):
+        # Validates: empty filename returns ok=False before any filesystem access
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.is_path_allowed", lambda p: True)
+        result = ingest_file_op("", "content")
+        assert result["ok"] is False
+        assert "empty" in result["error"].lower()
+
+    def test_path_separator_rejected(self, tmp_path, monkeypatch):
+        # Regression: filename with '/' could write outside /inputs/
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.is_path_allowed", lambda p: True)
+        for bad in ["../etc/passwd", "subdir/model.osm", "sub\\model.osm"]:
+            result = ingest_file_op(bad, "content")
+            assert result["ok"] is False, f"Expected rejection for {bad!r}"
+
+    def test_disallowed_extension_rejected(self, tmp_path, monkeypatch):
+        # Validates: only .osm and .epw are accepted
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.is_path_allowed", lambda p: True)
+        for bad_ext in ["model.py", "model.rb", "model.idf", "model.txt", "model"]:
+            result = ingest_file_op(bad_ext, "content")
+            assert result["ok"] is False, f"Expected rejection for {bad_ext!r}"
+            assert "not allowed" in result["error"].lower() or "extension" in result["error"].lower()
+
+    def test_empty_content_rejected(self, tmp_path, monkeypatch):
+        # Validates: empty content returns ok=False to prevent silent zero-byte file
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.is_path_allowed", lambda p: True)
+        result = ingest_file_op("model.osm", "")
+        assert result["ok"] is False
+        assert "empty" in result["error"].lower()
+
+    def test_valid_osm_written(self, tmp_path, monkeypatch):
+        # Validates: valid .osm filename and content writes file and returns correct path/size
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            "mcp_server.skills.model_management.operations.is_path_allowed",
+            lambda p: str(p).startswith(str(tmp_path)),
+        )
+        content = "<OpenStudio>fake osm</OpenStudio>"
+        result = ingest_file_op("model.osm", content)
+        assert result["ok"] is True, result
+        assert result["path"] == str(tmp_path / "model.osm")
+        assert result["size_bytes"] == len(content.encode("utf-8"))
+        assert (tmp_path / "model.osm").read_text(encoding="utf-8") == content
+
+    def test_valid_epw_written(self, tmp_path, monkeypatch):
+        # Validates: .epw extension is also accepted
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            "mcp_server.skills.model_management.operations.is_path_allowed",
+            lambda p: str(p).startswith(str(tmp_path)),
+        )
+        result = ingest_file_op("weather.epw", "LOCATION,San Francisco")
+        assert result["ok"] is True, result
+        assert result["path"] == str(tmp_path / "weather.epw")
+
+    def test_overwrite_allowed(self, tmp_path, monkeypatch):
+        # Validates: second ingest of same filename silently overwrites
+        from mcp_server.skills.model_management.operations import ingest_file_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            "mcp_server.skills.model_management.operations.is_path_allowed",
+            lambda p: str(p).startswith(str(tmp_path)),
+        )
+        ingest_file_op("model.osm", "version1")
+        result = ingest_file_op("model.osm", "version2")
+        assert result["ok"] is True
+        assert (tmp_path / "model.osm").read_text() == "version2"
+
+
+class TestListInputs:
+    """list_inputs_op returns basenames of files in INPUT_ROOT."""
+
+    def test_empty_dir_returns_empty_list(self, tmp_path, monkeypatch):
+        # Validates: empty /inputs/ returns ok=True with empty files list
+        from mcp_server.skills.model_management.operations import list_inputs_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        result = list_inputs_op()
+        assert result["ok"] is True
+        assert result["files"] == []
+
+    def test_lists_ingested_files(self, tmp_path, monkeypatch):
+        # Validates: after writing files, list_inputs_op returns their basenames sorted
+        from mcp_server.skills.model_management.operations import ingest_file_op, list_inputs_op
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", tmp_path)
+        monkeypatch.setattr(
+            "mcp_server.skills.model_management.operations.is_path_allowed",
+            lambda p: str(p).startswith(str(tmp_path)),
+        )
+        ingest_file_op("model.osm", "osm content")
+        ingest_file_op("weather.epw", "epw content")
+        result = list_inputs_op()
+        assert result["ok"] is True
+        assert result["files"] == ["model.osm", "weather.epw"]
+
+    def test_nonexistent_root_returns_empty(self, tmp_path, monkeypatch):
+        # Validates: if /inputs/ doesn't exist yet, returns empty list rather than crashing
+        from mcp_server.skills.model_management.operations import list_inputs_op
+        missing = tmp_path / "nonexistent"
+        monkeypatch.setattr("mcp_server.skills.model_management.operations.INPUT_ROOT", missing)
+        result = list_inputs_op()
+        assert result["ok"] is True
+        assert result["files"] == []
