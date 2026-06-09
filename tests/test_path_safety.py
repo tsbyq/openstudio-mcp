@@ -640,7 +640,7 @@ class TestIngestFileValidation:
         for bad_ext in ["model.py", "model.rb", "model.idf", "model.txt", "model"]:
             result = ingest_file_op(bad_ext, "content")
             assert result["ok"] is False, f"Expected rejection for {bad_ext!r}"
-            assert "not allowed" in result["error"].lower() or "extension" in result["error"].lower()
+            assert "extension" in result["error"].lower()
 
     def test_empty_content_rejected(self, tmp_path, monkeypatch):
         # Validates: empty content returns ok=False to prevent silent zero-byte file
